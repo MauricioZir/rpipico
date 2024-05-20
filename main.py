@@ -19,7 +19,9 @@ import uasyncio as asyncio
 import dht, machine, json
 from collections import OrderedDict
 
-d = dht.DHT22(machine.Pin(13))
+vcc=machine.Pin(7,machine.Pin.OUT)
+vcc.value(1)
+d = dht.DHT22(machine.Pin(8))
 
 def sub_cb(topic, msg, retained):
     print('Topic = {} -> Valor = {}'.format(topic.decode(), msg.decode()))
@@ -48,7 +50,7 @@ async def main(client):
             await client.publish('iot/2024/' + config['client_id'].decode('utf-8'), datos, qos = 1)
         except OSError as e:
             print("sin sensor")
-        await asyncio.sleep(30)  # Broker is slow
+        await asyncio.sleep(60)  # Broker is slow
 
 # Define configuration
 config['subs_cb'] = sub_cb

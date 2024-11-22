@@ -1,9 +1,14 @@
 from machine import Pin
-import time
+from time import sleep
 
-led = Pin(2, Pin.OUT)
-while (True):
-    led.on()
-    time.sleep(.5)
-    led.off()
-    time.sleep(.5)
+pin = Pin("LED", Pin.OUT)
+
+print("LED esta destellando...")
+while True:
+    try:
+        pin.toggle()
+        sleep(.5) # sleep 1sec
+    except KeyboardInterrupt:
+        break
+pin.off()
+print("Listo")

@@ -1,21 +1,25 @@
-# Germán Andrés Xander 2023
+# Germán Andrés Xander 2024
 
 from machine import Pin
 import time
 
-print("esperando pulsador")
+print("\nesperando pulsador")
 
-sw = Pin(23, Pin.IN)
-led = Pin(2, Pin.OUT)
+sw = Pin(22, Pin.IN)
+led = Pin("LED", Pin.OUT)
 contador=0
 bandera=True
 
 while True:
-    if sw.value() and bandera:
-        bandera=False
-        led.value(not led.value())
-        contador += 1
-        print(contador)
-    elif not sw.value():
-        bandera=True
-    time.sleep_ms(5)
+    try:
+        if sw.value() and bandera:
+            bandera=False
+            led.toggle()
+            # led.value(not led.value())
+            contador += 1
+            print(contador)
+        elif not sw.value():
+            bandera=True
+        time.sleep_ms(5)
+    except KeyboardInterrupt:
+        break

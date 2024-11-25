@@ -1,3 +1,5 @@
+# Germán Andrés Xander 2024
+
 from machine import Pin
 import dht
 

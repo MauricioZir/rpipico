@@ -5,7 +5,7 @@ import time
 
 print("\nesperando pulsador")
 
-sw = Pin(22, Pin.IN)
+sw = Pin(28, Pin.IN, Pin.PULL_DOWN)
 led = Pin("LED", Pin.OUT)
 contador=0
 bandera=True

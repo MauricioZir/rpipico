@@ -1,23 +1,32 @@
-# Original author: Peter Hinch
-# Copyright Peter Hinch 2017-2020 Released under the MIT license
-# Adaptation Germán Andrés Xander 2024
+# Germán Andrés Xander 2024
 
-import asyncio
 from machine import Pin
-from led_async import LED_async  # Class as listed above
+import asyncio
+from primitives import Pushbutton
+
+led_board = Pin("LED", Pin.OUT)
+led_rojo = Pin(14, Pin.OUT)
+
+def toggle(led):
+    led.toggle()
+
+async def boton():
+    pin = Pin(28, Pin.IN, Pin.PULL_DOWN)  # Pushbutton to vcc
+    pb = Pushbutton(pin)
+    pb.press_func(toggle, (led_board,))  # Note how function and args are passed
+
+async def heartbeat():
+    while True:
+        await asyncio.sleep_ms(500)
+        led_rojo.toggle()
 
 async def main():
-    pines = [14, 17]
-    leds = [LED_async(n) for n in pines]
-    for n, led in enumerate(leds):
-        led.flash(0.7 + n/4)
-    sw = Pin(28, Pin.IN, Pin.PULL_DOWN)
-    while not sw.value():
-        await asyncio.sleep_ms(100)
-    for n, led in enumerate(leds):
-        led.off()
+    n = 0
+    while True:
+        print(n)
+        n += 1
+        await asyncio.sleep(1)
 
-try:
-    asyncio.run(main())
-except KeyboardInterrupt:
-    print('Keyboard interrupt at loop level.')
+asyncio.create_task(boton())
+asyncio.create_task(heartbeat())
+asyncio.run(main())  # Run main application code

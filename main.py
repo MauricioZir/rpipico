@@ -1,59 +1,109 @@
-# (C) Copyright Peter Hinch 2017-2019.
-# Released under the MIT licence.
-
-# This demo publishes to topic "result" and also subscribes to that topic.
-# This demonstrates bidirectional TLS communication.
-# You can also run the following on a PC to verify:
-# mosquitto_sub -h test.mosquitto.org -t result
-# To get mosquitto_sub to use a secure connection use this, offered by @gmrza:
-# mosquitto_sub -h <my local mosquitto server> -t result -u <username> -P <password> -p 8883
-
-# Public brokers https://github.com/mqtt/mqtt.github.io/wiki/public_brokers
-
-# red LED: ON == WiFi fail
-# green LED heartbeat: demonstrates scheduler is running.
-
+import machine
+import uasyncio as asyncio
+import btree
+import dht
 from mqtt_as import MQTTClient
 from mqtt_local import config
-import uasyncio as asyncio
+import json
 
-SERVER = config['server']
+# Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
+id_dispositivo = ""
+for b in machine.unique_id():
+    id_dispositivo += "{:02X}".format(b)
 
-def sub_cb(topic, msg, retained):
-    c, r = [int(x) for x in msg.decode().split(' ')]
-    print('Topic = {} Count = {} Retransmissions = {} Retained = {}'.format(topic.decode(), c, r, retained))
+# Definición de pines
+sensor = dht.DHT22(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
+rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
+led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
 
-async def wifi_han(state):
-    print('Wifi is ', 'up' if state else 'down')
-    await asyncio.sleep(1)
+# Abrir o crear base de datos para almacenamiento no volátil
+try:
+    f = open("config.db", "r+b")
+except OSError:
+    f = open("config.db", "w+b")
+db = btree.open(f)
 
-# If you connect with clean_session True, must re-subscribe (MQTT spec 3.1.2.4)
-async def conn_han(client):
-    await client.subscribe('result', 1)
+# Cargar valores almacenados o establecer valores predeterminados
+setpoint = int(db.get(b"setpoint", b"25"))
+periodo = int(db.get(b"periodo", b"10"))
+modo = db.get(b"modo", b"auto").decode()
+rele_estado = int(db.get(b"rele", b"0"))
 
-async def main(client):
-    await client.connect()
-    n = 0
-    await asyncio.sleep(2)  # Give broker time
+def guardar_parametros():
+    """Guarda los parámetros en memoria no volátil."""
+    db[b"setpoint"] = str(setpoint).encode()
+    db[b"periodo"] = str(periodo).encode()
+    db[b"modo"] = modo.encode()
+    db[b"rele"] = str(rele_estado).encode()
+    db.flush()
+
+async def manejar_mensajes(topic, msg, retained):
+    """Maneja los mensajes recibidos por MQTT y actualiza los parámetros."""
+    global setpoint, periodo, modo, rele_estado
+    topic = topic.decode()
+    msg = msg.decode()
+    
+    if topic.endswith("/setpoint"):
+        setpoint = int(msg)
+    elif topic.endswith("/periodo"):
+        periodo = int(msg)
+    elif topic.endswith("/modo"):
+        modo = msg
+    elif topic.endswith("/rele"):
+        rele_estado = int(msg)
+    elif topic.endswith("/destello"):
+        for _ in range(5):
+            led.on()
+            await asyncio.sleep(0.5)
+            led.off()
+            await asyncio.sleep(0.5)
+    
+    guardar_parametros()
+    actualizar_rele()
+
+def actualizar_rele():
+    """Controla el estado del relé según el modo de operación."""
+    if modo == "auto":
+        sensor.measure()
+        temperatura = sensor.temperature()
+        rele.value(temperatura > setpoint)
+    else:
+        rele.value(rele_estado)
+
+async def publicar_datos(client):
+    """Publica periódicamente los datos del sensor en MQTT."""
     while True:
-        print('publish', n)
-        # If WiFi is down the following will pause for the duration.
-        await client.publish('result', '{} {}'.format(n, client.REPUB_COUNT), qos = 1)
-        n += 1
-        await asyncio.sleep(10)  # Broker is slow
+        sensor.measure()
+        data = {
+            "temperatura": sensor.temperature(),
+            "humedad": sensor.humidity(),
+            "setpoint": setpoint,
+            "periodo": periodo,
+            "modo": modo
+        }
+        await client.publish(id_dispositivo, json.dumps(data), qos=1)
+        await asyncio.sleep(periodo)
 
-# Define configuration
-config['subs_cb'] = sub_cb
-config['server'] = SERVER
-config['connect_coro'] = conn_han
-config['wifi_coro'] = wifi_han
+async def conexion_exitosa(client):
+    """Se ejecuta cuando se establece la conexión MQTT."""
+    await client.subscribe(f"{id_dispositivo}/setpoint", 1)
+    await client.subscribe(f"{id_dispositivo}/periodo", 1)
+    await client.subscribe(f"{id_dispositivo}/modo", 1)
+    await client.subscribe(f"{id_dispositivo}/rele", 1)
+    await client.subscribe(f"{id_dispositivo}/destello", 1)
+
+# Configuración de MQTT
+config['subs_cb'] = manejar_mensajes
+config['server'] = config['server']
+config['connect_coro'] = conexion_exitosa
 config['ssl'] = True
 
-# Set up client
-MQTTClient.DEBUG = True  # Optional
+# Configuración y ejecución del cliente MQTT
+MQTTClient.DEBUG = True
 client = MQTTClient(config)
+
 try:
-    asyncio.run(main(client))
+    asyncio.run(publicar_datos(client))
 finally:
     client.close()
     asyncio.new_event_loop()

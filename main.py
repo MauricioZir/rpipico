@@ -19,7 +19,7 @@ led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
 
 
 
-
+'''
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 wlan.config(pm = 0xa11140)   # Disable power-save mode
@@ -42,7 +42,7 @@ else:
     print( 'ip = ' + status[0] )
 
 print('Datos de la red: ', wlan.ifconfig())
-
+'''
 
 
 

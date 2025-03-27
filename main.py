@@ -1,41 +1,39 @@
 import machine
 import uasyncio as asyncio
-import btree
 import dht
+import json
 from mqtt_as import MQTTClient
 from mqtt_local import config
-import json
 
 # Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
-id_dispositivo = ""
-for b in machine.unique_id():
-    id_dispositivo += "{:02X}".format(b)
+id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
 
 # Definición de pines
 sensor = dht.DHT22(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
 rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
 led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
 
-# Abrir o crear base de datos para almacenamiento no volátil
-try:
-    f = open("config.db", "r+b")
-except OSError:
-    f = open("config.db", "w+b")
-db = btree.open(f)
+# Función para leer los parámetros desde config.json
+def leer_parametros():
+    """Lee los parámetros desde un archivo JSON."""
+    try:
+        with open("config.json", "r") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"setpoint": 25, "periodo": 10, "modo": "auto", "rele": 0}
 
-# Cargar valores almacenados o establecer valores predeterminados
-setpoint = int(db.get(b"setpoint", b"25"))
-periodo = int(db.get(b"periodo", b"10"))
-modo = db.get(b"modo", b"auto").decode()
-rele_estado = int(db.get(b"rele", b"0"))
+# Cargar valores almacenados
+config_data = leer_parametros()
+setpoint = config_data["setpoint"]
+periodo = config_data["periodo"]
+modo = config_data["modo"]
+rele_estado = config_data["rele"]
 
+# Función para guardar parámetros en config.json
 def guardar_parametros():
-    """Guarda los parámetros en memoria no volátil."""
-    db[b"setpoint"] = str(setpoint).encode()
-    db[b"periodo"] = str(periodo).encode()
-    db[b"modo"] = modo.encode()
-    db[b"rele"] = str(rele_estado).encode()
-    db.flush()
+    """Guarda los parámetros en un archivo JSON."""
+    with open("config.json", "w") as f:
+        json.dump({"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}, f)
 
 async def manejar_mensajes(topic, msg, retained):
     """Maneja los mensajes recibidos por MQTT y actualiza los parámetros."""

@@ -4,6 +4,9 @@ import dht
 import json
 from mqtt_as import MQTTClient
 from mqtt_local import config
+import network
+import time
+from settings import SSID, password
 
 # Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
@@ -12,6 +15,40 @@ id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
 sensor = dht.DHT11(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
 rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
 led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
+
+
+
+
+
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.config(pm = 0xa11140)   # Disable power-save mode
+wlan.connect(SSID, password)
+
+max_wait = 10
+while max_wait > 0:
+    if wlan.status() < 0 or wlan.status() >= 3:
+        break
+    max_wait -= 1
+    print('waiting for connection...')
+    time.sleep(1)
+
+# Handle connection error
+if wlan.status() != 3:
+    raise RuntimeError('network connection failed')
+else:
+    print('connected')
+    status = wlan.ifconfig()
+    print( 'ip = ' + status[0] )
+
+print('Datos de la red: ', wlan.ifconfig())
+
+
+
+
+
+
+
 
 # Función para leer los parámetros desde config.json
 def leer_parametros():
@@ -105,3 +142,6 @@ try:
 finally:
     client.close()
     asyncio.new_event_loop()
+
+
+

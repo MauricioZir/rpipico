@@ -9,7 +9,7 @@ from mqtt_local import config
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
 
 # Definición de pines
-sensor = dht.DHT22(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
+sensor = dht.DHT11(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
 rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
 led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
 

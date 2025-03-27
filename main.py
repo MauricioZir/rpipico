@@ -10,6 +10,7 @@ from settings import SSID, password
 
 # Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
+print(id_dispositivo)
 
 # Definición de pines
 sensor = dht.DHT22(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
@@ -109,6 +110,7 @@ async def publicar_datos(client):
     """Publica periódicamente los datos del sensor en MQTT."""
     while True:
         sensor.measure()
+
         data = {
             "temperatura": sensor.temperature(),
             "humedad": sensor.humidity(),
@@ -116,6 +118,9 @@ async def publicar_datos(client):
             "periodo": periodo,
             "modo": modo
         }
+
+        print(data)
+
         await client.publish(id_dispositivo, json.dumps(data), qos=1)
         await asyncio.sleep(periodo)
 

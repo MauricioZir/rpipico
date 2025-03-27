@@ -20,31 +20,9 @@ led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
 
 
 
-'''
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-wlan.config(pm = 0xa11140)   # Disable power-save mode
-wlan.connect(SSID, password)
-
-max_wait = 10
-while max_wait > 0:
-    if wlan.status() < 0 or wlan.status() >= 3:
-        break
-    max_wait -= 1
-    print('waiting for connection...')
-    time.sleep(1)
-
-# Handle connection error
-if wlan.status() != 3:
-    raise RuntimeError('network connection failed')
-else:
-    print('connected')
-    status = wlan.ifconfig()
-    print( 'ip = ' + status[0] )
-
-print('Datos de la red: ', wlan.ifconfig())
-'''
-
+async def wifi_han(state):
+    print('WiFi está', 'conectado' if state else 'desconectado')
+    await asyncio.sleep(1)
 
 
 
@@ -79,6 +57,8 @@ async def manejar_mensajes(topic, msg, retained):
     topic = topic.decode()
     msg = msg.decode()
     
+    print(f"Mensaje recibido en el tema {topic}: {msg}")
+
     if topic.endswith("/setpoint"):
         setpoint = int(msg)
     elif topic.endswith("/periodo"):
@@ -107,6 +87,9 @@ def actualizar_rele():
         rele.value(rele_estado)
 
 async def publicar_datos(client):
+
+    await client.connect()
+    
     """Publica periódicamente los datos del sensor en MQTT."""
     while True:
         sensor.measure()
@@ -131,11 +114,16 @@ async def conexion_exitosa(client):
     await client.subscribe(f"{id_dispositivo}/modo", 1)
     await client.subscribe(f"{id_dispositivo}/rele", 1)
     await client.subscribe(f"{id_dispositivo}/destello", 1)
+    print("Conexión MQTT exitosa")
+    
+ 
+
 
 # Configuración de MQTT
 config['subs_cb'] = manejar_mensajes
 config['server'] = config['server']
 config['connect_coro'] = conexion_exitosa
+config['wifi_coro'] = wifi_han
 config['ssl'] = True
 
 # Configuración y ejecución del cliente MQTT

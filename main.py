@@ -1,49 +1,27 @@
+
 import machine
 import uasyncio as asyncio
 import dht
-import json
 from mqtt_as import MQTTClient
 from mqtt_local import config
-import network
-import time
-from settings import SSID, password
+import ujson as json
 
 # Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
+print(id_dispositivo)
 
 # Definición de pines
-sensor = dht.DHT11(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
+sensor = dht.DHT22(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
 rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
-led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
+#led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
+led = machine.Pin("LED", machine.Pin.OUT)
 
 
 
 
-
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-wlan.config(pm = 0xa11140)   # Disable power-save mode
-wlan.connect(SSID, password)
-
-max_wait = 10
-while max_wait > 0:
-    if wlan.status() < 0 or wlan.status() >= 3:
-        break
-    max_wait -= 1
-    print('waiting for connection...')
-    time.sleep(1)
-
-# Handle connection error
-if wlan.status() != 3:
-    raise RuntimeError('network connection failed')
-else:
-    print('connected')
-    status = wlan.ifconfig()
-    print( 'ip = ' + status[0] )
-
-print('Datos de la red: ', wlan.ifconfig())
-
-
+async def wifi_han(state):
+    print('WiFi está', 'conectado' if state else 'desconectado')
+    await asyncio.sleep(1)
 
 
 
@@ -57,7 +35,7 @@ def leer_parametros():
         with open("config.json", "r") as f:
             return json.load(f)
     except (OSError, ValueError):
-        return {"setpoint": 25, "periodo": 10, "modo": "auto", "rele": 0}
+        return {"setpoint": 20, "periodo": 10, "modo": "auto", "rele": 0}
 
 # Cargar valores almacenados
 config_data = leer_parametros()
@@ -66,14 +44,62 @@ periodo = config_data["periodo"]
 modo = config_data["modo"]
 rele_estado = config_data["rele"]
 
+
 # Función para guardar parámetros en config.json
 def guardar_parametros():
     """Guarda los parámetros en un archivo JSON."""
-    with open("config.json", "w") as f:
-        json.dump({"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}, f)
+    try:
+        # Crea el diccionario con los parámetros
+        json_data = {"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}
+        
+        # Abre el archivo en modo escritura ('w')
+        with open("config.json", "w") as f:
+            # Escribe el diccionario en formato JSON usando ujson
+            json.dump(json_data, f)
+        print("Parámetros guardados.")
 
-async def manejar_mensajes(topic, msg, retained):
+    except Exception as e:
+        print(f"Error al guardar parámetros: {e}")
+
+
+
+
+
+async def destellar_led():
+    """Realiza el destello de los LED de forma asíncrona."""
+    for _ in range(5):
+        led.on()
+        await asyncio.sleep(0.5)  # Usar asyncio.sleep para no bloquear el ciclo de eventos
+        led.off()
+        await asyncio.sleep(0.5)
+
+
+async def actualizar_rele(medir=True):
+    """Controla el estado del relé de forma asíncrona."""
+    global sensor, setpoint, modo, rele, rele_estado
+
+    if modo == "auto":
+        if medir:
+            await asyncio.sleep(0)  # Permitir que otras tareas se ejecuten
+            sensor.measure()
+        
+        temperatura = sensor.temperature()
+        rele.value(temperatura > setpoint)
+    else:
+        rele.value(rele_estado)
+
+
+
+
+
+
+
+
+def manejar_mensajes(topic, msg, retained):
     """Maneja los mensajes recibidos por MQTT y actualiza los parámetros."""
+    
+    print("Mensaje recibido")
+
     global setpoint, periodo, modo, rele_estado
     topic = topic.decode()
     msg = msg.decode()
@@ -85,30 +111,29 @@ async def manejar_mensajes(topic, msg, retained):
     elif topic.endswith("/modo"):
         modo = msg
     elif topic.endswith("/rele"):
-        rele_estado = int(msg)
-    elif topic.endswith("/destello"):
-        for _ in range(5):
-            led.on()
-            await asyncio.sleep(0.5)
-            led.off()
-            await asyncio.sleep(0.5)
+        # Alternar el estado del relé cuando se recibe "rele"
+        if msg.lower() == "rele":
+            rele_estado = 1 if rele_estado == 0 else 0  # Cambia entre 0 y 1
+    elif topic.endswith("/destello") and msg == "destello":
+        # Llamamos a la función de destello sin bloquear el ciclo de eventos
+        asyncio.create_task(destellar_led())  # Inicia el destello en una tarea separada
     
     guardar_parametros()
-    actualizar_rele()
+    asyncio.create_task(actualizar_rele(True))  # Llamada asíncrona para evitar bloqueos
 
-def actualizar_rele():
-    """Controla el estado del relé según el modo de operación."""
-    if modo == "auto":
-        sensor.measure()
-        temperatura = sensor.temperature()
-        rele.value(temperatura > setpoint)
-    else:
-        rele.value(rele_estado)
+
+
+
 
 async def publicar_datos(client):
+
+    await client.connect()
+    
     """Publica periódicamente los datos del sensor en MQTT."""
     while True:
         sensor.measure()
+        asyncio.create_task(actualizar_rele(False))  # Llamada asíncrona
+
         data = {
             "temperatura": sensor.temperature(),
             "humedad": sensor.humidity(),
@@ -116,8 +141,12 @@ async def publicar_datos(client):
             "periodo": periodo,
             "modo": modo
         }
+
+        print(data)
+
         await client.publish(id_dispositivo, json.dumps(data), qos=1)
         await asyncio.sleep(periodo)
+
 
 async def conexion_exitosa(client):
     """Se ejecuta cuando se establece la conexión MQTT."""
@@ -126,11 +155,16 @@ async def conexion_exitosa(client):
     await client.subscribe(f"{id_dispositivo}/modo", 1)
     await client.subscribe(f"{id_dispositivo}/rele", 1)
     await client.subscribe(f"{id_dispositivo}/destello", 1)
+    print("Conexión MQTT exitosa")
+    
+ 
+
 
 # Configuración de MQTT
 config['subs_cb'] = manejar_mensajes
 config['server'] = config['server']
 config['connect_coro'] = conexion_exitosa
+config['wifi_coro'] = wifi_han
 config['ssl'] = True
 
 # Configuración y ejecución del cliente MQTT
@@ -142,6 +176,3 @@ try:
 finally:
     client.close()
     asyncio.new_event_loop()
-
-
-

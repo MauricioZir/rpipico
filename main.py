@@ -1,12 +1,9 @@
 import machine
 import uasyncio as asyncio
 import dht
-import json
 from mqtt_as import MQTTClient
 from mqtt_local import config
-import network
-import time
-from settings import SSID, password
+import ujson as json
 
 # Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
@@ -15,7 +12,8 @@ print(id_dispositivo)
 # Definición de pines
 sensor = dht.DHT22(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
 rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
-led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
+#led = machine.Pin(25, machine.Pin.OUT)  # LED indicador en la placa
+led = machine.Pin("LED", machine.Pin.OUT)
 
 
 
@@ -36,7 +34,7 @@ def leer_parametros():
         with open("config.json", "r") as f:
             return json.load(f)
     except (OSError, ValueError):
-        return {"setpoint": 25, "periodo": 10, "modo": "auto", "rele": 0}
+        return {"setpoint": 20, "periodo": 10, "modo": "auto", "rele": 0}
 
 # Cargar valores almacenados
 config_data = leer_parametros()
@@ -45,13 +43,37 @@ periodo = config_data["periodo"]
 modo = config_data["modo"]
 rele_estado = config_data["rele"]
 
+
 # Función para guardar parámetros en config.json
 def guardar_parametros():
     """Guarda los parámetros en un archivo JSON."""
-    print("Guardando parámetros...")
-    with open("config.json", "w") as f:
-        json.dump({"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}, f)
-    print("Parámetros guardados.")
+    try:
+        # Crea el diccionario con los parámetros
+        json_data = {"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}
+        
+        # Abre el archivo en modo escritura ('w')
+        with open("config.json", "w") as f:
+            # Escribe el diccionario en formato JSON usando ujson
+            json.dump(json_data, f)
+        print("Parámetros guardados.")
+
+    except Exception as e:
+        print(f"Error al guardar parámetros: {e}")
+
+
+
+
+
+
+async def destellar_led():
+    """Realiza el destello de los LED de forma asíncrona."""
+    for _ in range(5):
+        led.on()
+        await asyncio.sleep(0.5)  # Usar asyncio.sleep para no bloquear el ciclo de eventos
+        led.off()
+        await asyncio.sleep(0.5)
+
+
 
 
 def manejar_mensajes(topic, msg, retained):
@@ -71,13 +93,9 @@ def manejar_mensajes(topic, msg, retained):
         modo = msg
     elif topic.endswith("/rele"):
         rele_estado = int(msg)
-    elif topic.endswith("/destello"):
-        # Realiza el destello
-        for _ in range(5):
-            led.on()
-            time.sleep(0.5)
-            led.off()
-            time.sleep(0.5)
+    elif topic.endswith("/destello") and msg == "destello":
+        # Llamamos a la función de destello sin bloquear el ciclo de eventos
+        asyncio.create_task(destellar_led())  # Inicia el destello en una tarea separada
     
     guardar_parametros()
     actualizar_rele()
@@ -93,6 +111,7 @@ def actualizar_rele():
         rele.value(temperatura > setpoint)
     else:
         rele.value(rele_estado)
+
 
 async def publicar_datos(client):
 
@@ -114,6 +133,7 @@ async def publicar_datos(client):
 
         await client.publish(id_dispositivo, json.dumps(data), qos=1)
         await asyncio.sleep(periodo)
+
 
 async def conexion_exitosa(client):
     """Se ejecuta cuando se establece la conexión MQTT."""
@@ -143,14 +163,4 @@ try:
 finally:
     client.close()
     asyncio.new_event_loop()
-
-
-
-
-
-
-
-
-
-
 

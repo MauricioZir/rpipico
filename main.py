@@ -48,17 +48,21 @@ rele_estado = config_data["rele"]
 # Función para guardar parámetros en config.json
 def guardar_parametros():
     """Guarda los parámetros en un archivo JSON."""
+    print("Guardando parámetros...")
     with open("config.json", "w") as f:
         json.dump({"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}, f)
+    print("Parámetros guardados.")
 
-async def manejar_mensajes(topic, msg):
+
+def manejar_mensajes(topic, msg, retained):
     """Maneja los mensajes recibidos por MQTT y actualiza los parámetros."""
+    
+    print("Mensaje recibido")
+
     global setpoint, periodo, modo, rele_estado
     topic = topic.decode()
     msg = msg.decode()
     
-    print("HOLAAAAAAAAAAAAAAAAAA")
-
     if topic.endswith("/setpoint"):
         setpoint = int(msg)
     elif topic.endswith("/periodo"):
@@ -68,14 +72,18 @@ async def manejar_mensajes(topic, msg):
     elif topic.endswith("/rele"):
         rele_estado = int(msg)
     elif topic.endswith("/destello"):
+        # Realiza el destello
         for _ in range(5):
             led.on()
-            await asyncio.sleep(0.5)
+            time.sleep(0.5)
             led.off()
-            await asyncio.sleep(0.5)
+            time.sleep(0.5)
     
     guardar_parametros()
     actualizar_rele()
+
+
+
 
 def actualizar_rele():
     """Controla el estado del relé según el modo de operación."""

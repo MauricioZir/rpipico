@@ -64,7 +64,6 @@ def guardar_parametros():
 
 
 
-
 async def destellar_led():
     """Realiza el destello de los LED de forma asíncrona."""
     for _ in range(5):
@@ -72,6 +71,24 @@ async def destellar_led():
         await asyncio.sleep(0.5)  # Usar asyncio.sleep para no bloquear el ciclo de eventos
         led.off()
         await asyncio.sleep(0.5)
+
+
+def actualizar_rele(medir=True):
+    """Controla el estado del relé según el modo de operación."""
+
+    if modo == "auto":
+        if medir:
+            sensor.measure()  # Solo mide si se solicita
+
+        temperatura = sensor.temperature()  # Usar la última temperatura medida
+
+        rele.value(temperatura > setpoint)
+    else:
+        rele.value(rele_estado)  # Usa el valor manual del relé
+
+
+
+
 
 
 
@@ -92,25 +109,18 @@ def manejar_mensajes(topic, msg, retained):
     elif topic.endswith("/modo"):
         modo = msg
     elif topic.endswith("/rele"):
-        rele_estado = int(msg)
+        # Alternar el estado del relé cuando se recibe "rele"
+        if msg.lower() == "rele":
+            rele_estado = 1 if rele_estado == 0 else 0  # Cambia entre 0 y 1
     elif topic.endswith("/destello") and msg == "destello":
         # Llamamos a la función de destello sin bloquear el ciclo de eventos
         asyncio.create_task(destellar_led())  # Inicia el destello en una tarea separada
     
     guardar_parametros()
-    actualizar_rele()
+    actualizar_rele(True)
 
 
 
-
-def actualizar_rele():
-    """Controla el estado del relé según el modo de operación."""
-    if modo == "auto":
-        sensor.measure()
-        temperatura = sensor.temperature()
-        rele.value(temperatura > setpoint)
-    else:
-        rele.value(rele_estado)
 
 
 async def publicar_datos(client):
@@ -120,6 +130,7 @@ async def publicar_datos(client):
     """Publica periódicamente los datos del sensor en MQTT."""
     while True:
         sensor.measure()
+        actualizar_rele(False)
 
         data = {
             "temperatura": sensor.temperature(),

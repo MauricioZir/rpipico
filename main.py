@@ -51,13 +51,13 @@ def guardar_parametros():
     with open("config.json", "w") as f:
         json.dump({"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}, f)
 
-async def manejar_mensajes(topic, msg, retained):
+async def manejar_mensajes(topic, msg):
     """Maneja los mensajes recibidos por MQTT y actualiza los parámetros."""
     global setpoint, periodo, modo, rele_estado
     topic = topic.decode()
     msg = msg.decode()
     
-    print(f"Mensaje recibido en el tema {topic}: {msg}")
+    print("HOLAAAAAAAAAAAAAAAAAA")
 
     if topic.endswith("/setpoint"):
         setpoint = int(msg)

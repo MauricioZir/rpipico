@@ -73,18 +73,19 @@ async def destellar_led():
         await asyncio.sleep(0.5)
 
 
-def actualizar_rele(medir=True):
-    """Controla el estado del relé según el modo de operación."""
+async def actualizar_rele(medir=True):
+    """Controla el estado del relé de forma asíncrona."""
+    global sensor, setpoint, modo, rele, rele_estado
 
     if modo == "auto":
         if medir:
-            sensor.measure()  # Solo mide si se solicita
-
-        temperatura = sensor.temperature()  # Usar la última temperatura medida
-
+            await asyncio.sleep(0)  # Permitir que otras tareas se ejecuten
+            sensor.measure()
+        
+        temperatura = sensor.temperature()
         rele.value(temperatura > setpoint)
     else:
-        rele.value(rele_estado)  # Usa el valor manual del relé
+        rele.value(rele_estado)
 
 
 
@@ -117,7 +118,7 @@ def manejar_mensajes(topic, msg, retained):
         asyncio.create_task(destellar_led())  # Inicia el destello en una tarea separada
     
     guardar_parametros()
-    actualizar_rele(True)
+    asyncio.create_task(actualizar_rele(True))  # Llamada asíncrona para evitar bloqueos
 
 
 
@@ -130,7 +131,7 @@ async def publicar_datos(client):
     """Publica periódicamente los datos del sensor en MQTT."""
     while True:
         sensor.measure()
-        actualizar_rele(False)
+        asyncio.create_task(actualizar_rele(False))  # Llamada asíncrona
 
         data = {
             "temperatura": sensor.temperature(),
@@ -174,4 +175,3 @@ try:
 finally:
     client.close()
     asyncio.new_event_loop()
-

@@ -52,13 +52,17 @@ async def destellar_led():
     si se accede por publicar datos al broker no hace falta medir de vuelta.'''
 async def actualizar_rele(medir=True):
     global setpoint, modo, rele_estado
-    if modo == "auto":
-        if medir:
-            await asyncio.sleep(0)  # Cede el control antes de medir por si hay otras tareas
-            sensor.measure()
-        rele.value(0 if sensor.temperature() > setpoint else 1)
-    else:
-        rele.value(rele_estado)
+    try:
+        if modo == "auto":
+            if medir:
+                await asyncio.sleep(0)  # Cede control antes de medir
+                sensor.measure()
+            rele.value(0 if sensor.temperature() > setpoint else 1)
+        else:
+            rele.value(rele_estado)
+    except Exception as e:
+        print(f"Error en actualizar el relé: {e}")
+
 
 # Manejo de mensajes MQTT
 ''' Se ejecuta cada vez que hay un mensaje en la cola.'''
@@ -98,17 +102,20 @@ async def up(client):
 ''' Se ejecuta siempre a cada período.'''
 async def publicar_datos(client):
     while True:
-        sensor.measure()
-        asyncio.create_task(actualizar_rele(False))
-        data = {
-            "temperatura": sensor.temperature(),
-            "humedad": sensor.humidity(),
-            "setpoint": setpoint,
-            "periodo": periodo,
-            "modo": modo
-        }
-        print(data)
-        await client.publish(id_dispositivo, json.dumps(data), qos=1)
+        try:
+            sensor.measure()
+            asyncio.create_task(actualizar_rele(False))
+            data = {
+                "temperatura": sensor.temperature(),
+                "humedad": sensor.humidity(),
+                "setpoint": setpoint,
+                "periodo": periodo,
+                "modo": modo
+            }
+            print(data)
+            await client.publish(id_dispositivo, json.dumps(data), qos=1)
+        except Exception as e:
+            print(f"Error en publicar_datos: {e}")
         await asyncio.sleep(periodo)
 
 

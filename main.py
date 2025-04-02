@@ -5,7 +5,7 @@ from mqtt_as import MQTTClient
 from mqtt_local import config
 import ujson as json
 
-# Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico W
+# Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico 2W
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
 print(id_dispositivo)
 
@@ -80,6 +80,9 @@ async def messages(client):
             rele_estado = 1 if rele_estado == 0 else 0
         elif topic.endswith("/destello") and msg == "destello":
             asyncio.create_task(destellar_led())
+        else:
+            print(f"Mensaje en tópico desconocido: {topic} -> {msg}")
+            continue  # No hacer nada si es un tópico desconocido
         guardar_parametros()
         asyncio.create_task(actualizar_rele())
 
@@ -90,10 +93,13 @@ async def up(client):
     while True:
         await client.up.wait()
         client.up.clear()
-        topics = ["setpoint", "periodo", "modo", "rele", "destello"]
-        for t in topics:
-            await client.subscribe(f"{id_dispositivo}/{t}", 1)
-        print("Conexión MQTT establecida y suscripciones renovadas")
+        try:
+            topics = ["setpoint", "periodo", "modo", "rele", "destello"]
+            for t in topics:
+                await client.subscribe(f"{id_dispositivo}/{t}", 1)
+            print("Conexión MQTT establecida y suscripciones renovadas")
+        except Exception as e:
+            print(f"Error al suscribirse a los tópicos: {e}")
 
 # Publicación de datos periódica
 ''' Se ejecuta siempre a cada período.'''
@@ -112,7 +118,7 @@ async def publicar_datos(client):
             print(data)
             await client.publish(id_dispositivo, json.dumps(data), qos=1)
         except Exception as e:
-            print(f"Error en publicar_datos: {e}")
+            print(f"Error al publicar datos al broker: {e}")
         await asyncio.sleep(periodo)
 
 # Función principal

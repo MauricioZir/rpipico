@@ -59,6 +59,7 @@ async def actualizar_rele():
         await asyncio.sleep(0)  # Cede control antes de cualquier operación
         if estado["modo"] == "auto":
             rele.value(0 if sensor.temperature() > estado["setpoint"] else 1)
+            estado["rele"] = rele.value()
         else:
             rele.value(estado["rele"])
     except Exception as e:

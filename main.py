@@ -41,28 +41,27 @@ rele_estado = config_data["rele"]
 
 # Parpadeo del LED
 async def destellar_led():
-    for _ in range(5):
-        led.on()
-        await asyncio.sleep(0.5)
-        led.off()
-        await asyncio.sleep(0.5)
+    try:
+        for _ in range(5):
+            led.on()
+            await asyncio.sleep(0.5)
+            led.off()
+            await asyncio.sleep(0.5)
+    except Exception as e:
+        print(f"Error al destellar LED: {e}")
 
 # Control del relé
 ''' Si se accede por cambiar de modo se vuelve a medir para actualizar el relé,
     si se accede por publicar datos al broker no hace falta medir de vuelta.'''
-async def actualizar_rele(medir=True):
+async def actualizar_rele():
     global setpoint, modo, rele_estado
     try:
         if modo == "auto":
-            if medir:
-                await asyncio.sleep(0)  # Cede control antes de medir
-                sensor.measure()
             rele.value(0 if sensor.temperature() > setpoint else 1)
         else:
             rele.value(rele_estado)
     except Exception as e:
         print(f"Error en actualizar el relé: {e}")
-
 
 # Manejo de mensajes MQTT
 ''' Se ejecuta cada vez que hay un mensaje en la cola.'''
@@ -82,8 +81,7 @@ async def messages(client):
         elif topic.endswith("/destello") and msg == "destello":
             asyncio.create_task(destellar_led())
         guardar_parametros()
-        asyncio.create_task(actualizar_rele(True))
-
+        asyncio.create_task(actualizar_rele())
 
 # Manejo de conexión MQTT
 ''' Se ejecuta la primera vez cuando la conexión MQTT está lista, 
@@ -97,14 +95,13 @@ async def up(client):
             await client.subscribe(f"{id_dispositivo}/{t}", 1)
         print("Conexión MQTT establecida y suscripciones renovadas")
 
-
 # Publicación de datos periódica
 ''' Se ejecuta siempre a cada período.'''
 async def publicar_datos(client):
     while True:
         try:
             sensor.measure()
-            asyncio.create_task(actualizar_rele(False))
+            asyncio.create_task(actualizar_rele())
             data = {
                 "temperatura": sensor.temperature(),
                 "humedad": sensor.humidity(),
@@ -118,7 +115,6 @@ async def publicar_datos(client):
             print(f"Error en publicar_datos: {e}")
         await asyncio.sleep(periodo)
 
-
 # Función principal
 async def main(client):
     await client.connect()
@@ -126,7 +122,6 @@ async def main(client):
         asyncio.create_task(coroutine(client))
     while True:
         await asyncio.sleep(10)
-
 
 # Configuración de MQTT
 config["queue_len"] = 1

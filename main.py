@@ -14,30 +14,33 @@ sensor = dht.DHT11(machine.Pin(15))  # Sensor de temperatura y humedad DHT22
 rele = machine.Pin(2, machine.Pin.OUT)  # Relé para controlar calefacción
 led = machine.Pin("LED", machine.Pin.OUT) # LED on board del Raspberry
 
+# Diccionario para almacenar el estado
+estado = {
+    "setpoint": 20,
+    "periodo": 10,
+    "modo": "auto",
+    "rele": 0
+}
+
 # Leer configuración desde archivo JSON
 def leer_parametros():
     try:
         with open("config.json", "r") as f:
-            return json.load(f)
+            estado.update(json.load(f))  # Actualiza el diccionario con los valores leídos
     except (OSError, ValueError):
-        return {"setpoint": 20, "periodo": 10, "modo": "auto", "rele": 0}
+        pass  # Si falla, mantiene los valores por defecto
 
 # Guardar configuración en archivo JSON
 def guardar_parametros():
     try:
-        json_data = {"setpoint": setpoint, "periodo": periodo, "modo": modo, "rele": rele_estado}
         with open("config.json", "w") as f:
-            json.dump(json_data, f)
+            json.dump(estado, f)
         print("Parámetros guardados.")
     except Exception as e:
         print(f"Error al guardar parámetros: {e}")
 
 # Cargar valores almacenados
-config_data = leer_parametros()
-setpoint = config_data["setpoint"]
-periodo = config_data["periodo"]
-modo = config_data["modo"]
-rele_estado = config_data["rele"]
+leer_parametros()
 
 # Parpadeo del LED
 async def destellar_led():
@@ -51,26 +54,19 @@ async def destellar_led():
         print(f"Error al destellar LED: {e}")
 
 # Control del relé
-''' Si se accede por cambiar de modo se vuelve a medir para actualizar el relé,
-    si se accede por publicar datos al broker no hace falta medir de vuelta.'''
 async def actualizar_rele():
-    global setpoint, modo, rele_estado
     try:
         await asyncio.sleep(0)  # Cede control antes de cualquier operación
-
-        if modo == "auto":
-            rele.value(0 if sensor.temperature() > setpoint else 1)
+        if estado["modo"] == "auto":
+            rele.value(0 if sensor.temperature() > estado["setpoint"] else 1)
         else:
-            rele.value(rele_estado)
+            rele.value(estado["rele"])
     except Exception as e:
         print(f"Error en actualizar el relé: {e}")
 
 # Manejo de mensajes MQTT
-''' Se ejecuta cada vez que hay un mensaje en la cola.'''
 async def messages(client):
     async for topic, msg, retained in client.queue:
-        global setpoint, periodo, modo, rele_estado
-
         try:
             topic = topic.decode()
             msg = msg.decode()
@@ -79,13 +75,13 @@ async def messages(client):
             continue  # Ignorar este mensaje y seguir con el siguiente
 
         if topic.endswith("/setpoint"):
-            setpoint = int(msg)
+            estado["setpoint"] = int(msg)
         elif topic.endswith("/periodo"):
-            periodo = int(msg)
+            estado["periodo"] = int(msg)
         elif topic.endswith("/modo"):
-            modo = msg
+            estado["modo"] = msg
         elif topic.endswith("/rele"):
-            rele_estado = 1 if rele_estado == 0 else 0
+            estado["rele"] = 1 if estado["rele"] == 0 else 0
         elif topic.endswith("/destello") and msg == "destello":
             asyncio.create_task(destellar_led())
         else:
@@ -95,8 +91,6 @@ async def messages(client):
         await actualizar_rele()
 
 # Manejo de conexión MQTT
-''' Se ejecuta la primera vez cuando la conexión MQTT está lista, 
-    luego solo se vuelve a ejecutar si hay una reconexión.'''
 async def up(client):
     while True:
         await client.up.wait()
@@ -110,7 +104,6 @@ async def up(client):
             print(f"Error al suscribirse a los tópicos: {e}")
 
 # Publicación de datos periódica
-''' Se ejecuta siempre a cada período.'''
 async def publicar_datos(client):
     while True:
         try:
@@ -119,15 +112,15 @@ async def publicar_datos(client):
             data = {
                 "temperatura": sensor.temperature(),
                 "humedad": sensor.humidity(),
-                "setpoint": setpoint,
-                "periodo": periodo,
-                "modo": modo
+                "setpoint": estado["setpoint"],
+                "periodo": estado["periodo"],
+                "modo": estado["modo"]
             }
             print(data)
             await client.publish(id_dispositivo, json.dumps(data), qos=1)
         except Exception as e:
             print(f"Error al publicar datos al broker: {e}")
-        await asyncio.sleep(periodo)
+        await asyncio.sleep(estado["periodo"])
 
 # Función principal
 async def main(client):

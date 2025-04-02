@@ -82,7 +82,8 @@ async def messages(client):
         elif topic.endswith("/modo"):
             estado["modo"] = msg
         elif topic.endswith("/rele"):
-            estado["rele"] = 1 if estado["rele"] == 0 else 0
+            if estado["modo"] != "auto":  # Solo cambiar si NO está en modo automático
+                estado["rele"] = 1 if estado["rele"] == 0 else 0
         elif topic.endswith("/destello") and msg == "destello":
             asyncio.create_task(destellar_led())
         else:

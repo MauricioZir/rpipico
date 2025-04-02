@@ -56,6 +56,8 @@ async def destellar_led():
 async def actualizar_rele():
     global setpoint, modo, rele_estado
     try:
+        await asyncio.sleep(0)  # Cede control antes de cualquier operación
+
         if modo == "auto":
             rele.value(0 if sensor.temperature() > setpoint else 1)
         else:
@@ -68,8 +70,14 @@ async def actualizar_rele():
 async def messages(client):
     async for topic, msg, retained in client.queue:
         global setpoint, periodo, modo, rele_estado
-        topic = topic.decode()
-        msg = msg.decode()
+
+        try:
+            topic = topic.decode()
+            msg = msg.decode()
+        except Exception as e:
+            print(f"Error al decodificar mensaje MQTT: {e}")
+            continue  # Ignorar este mensaje y seguir con el siguiente
+
         if topic.endswith("/setpoint"):
             setpoint = int(msg)
         elif topic.endswith("/periodo"):
@@ -84,7 +92,7 @@ async def messages(client):
             print(f"Mensaje en tópico desconocido: {topic} -> {msg}")
             continue  # No hacer nada si es un tópico desconocido
         guardar_parametros()
-        asyncio.create_task(actualizar_rele())
+        await actualizar_rele()
 
 # Manejo de conexión MQTT
 ''' Se ejecuta la primera vez cuando la conexión MQTT está lista, 
@@ -107,7 +115,7 @@ async def publicar_datos(client):
     while True:
         try:
             sensor.measure()
-            asyncio.create_task(actualizar_rele())
+            await actualizar_rele()
             data = {
                 "temperatura": sensor.temperature(),
                 "humedad": sensor.humidity(),

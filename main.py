@@ -15,7 +15,7 @@ sensor = dht.DHT11(machine.Pin(15))  # Sensor de temperatura y humedad DHT11
 led = machine.Pin("LED", machine.Pin.OUT) # LED on board del Raspberry
 
 #Periodo en cuanto publica los datos de humedad y temperatura
-periodo = 13
+periodo = 17
 
 
 # Manejo de mensajes MQTT para el Switch

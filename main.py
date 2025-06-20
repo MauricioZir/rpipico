@@ -4,6 +4,7 @@ import dht
 from mqtt_as import MQTTClient
 from mqtt_local import config
 import ujson as json
+from settings import SSID, password, BROKER, MQTT_USR, MQTT_PASS, MQTT_PORT
 
 # Obtener un ID único basado en la dirección MAC del Raspberry Pi Pico 2W
 id_dispositivo = "".join("{:02X}".format(b) for b in machine.unique_id())
@@ -59,11 +60,11 @@ async def publicar_datos(client):
     while True:
         try:
             sensor.measure()
-            data = {
-                "temperatura": sensor.temperature(),
-                "humedad": sensor.humidity(),
-            }
-            await client.publish(f"{id_dispositivo}/mediciones", json.dumps(data), qos=1)
+            temperatura = sensor.temperature()
+            humedad = sensor.humidity()
+            json_str = f'{{"temperatura": {temperatura}, "humedad": {humedad}}}'
+            
+            await client.publish(f"{id_dispositivo}/mediciones", json_str, qos=1)
         except Exception as e:
             print(f"Error al publicar datos al broker: {e}")
         await asyncio.sleep(periodo)
@@ -80,8 +81,16 @@ async def main(client):
 
 # Configuración de MQTT
 config["queue_len"] = 1
+config['server'] = BROKER
+config['ssid'] = SSID
+config['wifi_pw'] = password
+config['user'] = MQTT_USR
+config['password'] = MQTT_PASS
+config['port'] = MQTT_PORT
+config['ssl'] = True
 MQTTClient.DEBUG = True
 client = MQTTClient(config)
+
 
 try:
     asyncio.run(main(client))
